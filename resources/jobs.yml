@@ -14,7 +14,7 @@ resources:
       environments:
         - environment_key: default
           spec:
-            client: "2"
+            client: "5"
             dependencies:
               - ../dist/*.whl
 
@@ -43,7 +43,7 @@ resources:
       environments:
         - environment_key: default
           spec:
-            client: "2"
+            client: "5"
             dependencies:
               - ../dist/*.whl
 
@@ -89,6 +89,6 @@ resources:
       environments:
         - environment_key: default
           spec:
-            client: "2"
+            client: "5"
             dependencies:
               - ../dist/*.whl

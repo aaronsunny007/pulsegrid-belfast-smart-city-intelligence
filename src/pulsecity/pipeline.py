@@ -208,6 +208,7 @@ def build_gold(
         tracked=("line_name", "mode"),
     )
     overwrite(gold.date_dimension(all_snapshots), tables.dim_date)
+    create_views(spark, tables)
 
     metrics = {
         "start_date": str(start) if start else "full",
@@ -217,6 +218,33 @@ def build_gold(
     snapshots.unpersist()
     incidents.unpersist()
     return metrics
+
+
+def create_views(spark: SparkSession, tables: Tables) -> None:
+    """Reporting views for Power BI and ad-hoc SQL (idempotent)."""
+    spark.sql(f"""
+        CREATE OR REPLACE VIEW {tables.name("gold", "v_live_alerts")} AS
+        SELECT city, line_id, line_name, mode, as_of, polled_at_local,
+               worst_severity_description AS status, worst_reason AS reason,
+               CASE WHEN worst_is_planned THEN 'Planned works' ELSE 'Live disruption' END
+                 AS alert_type
+        FROM {tables.line_status_current}
+        WHERE NOT is_service_closed AND worst_severity_code NOT IN (10, 18, 19)
+    """)
+    spark.sql(f"""
+        CREATE OR REPLACE VIEW {tables.name("gold", "v_line_reliability_7d")} AS
+        WITH latest AS (SELECT max(service_date) AS d FROM {tables.agg_line_reliability_daily})
+        SELECT city, line_id, max_by(line_name, service_date) AS line_name,
+               round(sum(observed_min - unplanned_impact_min) / sum(observed_min) * 100, 2)
+                 AS reliability_score_7d,
+               sum(incidents) AS incidents_7d,
+               round(avg(mean_time_to_recover_min), 1) AS avg_time_to_recover_min,
+               round(sum(planned_impact_min) / 60, 1) AS planned_works_hours_7d,
+               round(avg(coverage_pct), 1) AS avg_coverage_pct
+        FROM {tables.agg_line_reliability_daily}, latest
+        WHERE service_date > latest.d - INTERVAL 7 DAYS
+        GROUP BY city, line_id
+    """)
 
 
 # --------------------------------------------------------------------------------------

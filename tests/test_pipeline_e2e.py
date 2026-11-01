@@ -52,6 +52,17 @@ def test_incident_count_and_current_status(spark, tables):
     assert spark.table(tables.dim_line).where("is_current").count() == 13
 
 
+def test_reporting_views(spark, tables):
+    alerts = spark.table(tables.name("gold", "v_live_alerts")).collect()
+    # The scenario ends at 04:00 on Sunday, when every line is either running or closed.
+    assert all(a.alert_type in ("Planned works", "Live disruption") for a in alerts)
+    week = {
+        r.line_id: r for r in spark.table(tables.name("gold", "v_line_reliability_7d")).collect()
+    }
+    assert week["central"].incidents_7d == 1
+    assert week["piccadilly"].reliability_score_7d < 100
+
+
 def test_rerunning_is_idempotent(spark, tables):
     cfg = load_city("london")
     before = {

@@ -1,0 +1,44 @@
+# Databricks Asset Bundle: deploys the wheel and all jobs with one command.
+#   databricks bundle deploy -t dev     # schedules paused, catalog pulsecity_dev
+#   databricks bundle deploy -t prod    # schedules live, catalog pulsecity
+bundle:
+  name: pulsecity
+
+include:
+  - resources/*.yml
+
+artifacts:
+  pulsecity_wheel:
+    type: whl
+    build: python -m pip wheel --no-deps --wheel-dir dist .
+    path: .
+
+variables:
+  catalog:
+    description: Unity Catalog catalog that holds every PulseCity table and volume.
+    default: pulsecity
+  city:
+    description: City config to run (src/pulsecity/cities/<city>.yml).
+    default: london
+  storage_root:
+    description: >
+      Optional abfss:// path on ADLS Gen2, covered by a Unity Catalog external location,
+      e.g. abfss://lakehouse@<account>.dfs.core.windows.net/pulsecity. When set, managed
+      tables and raw landing files are stored there. Leave empty to use the metastore default.
+    default: ""
+  notification_email:
+    description: Address that receives job failure emails.
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog: pulsecity_dev
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: pulsecity

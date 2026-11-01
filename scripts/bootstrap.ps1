@@ -36,6 +36,7 @@ function Step([string]$Text) { Write-Host "`n==> $Text" -ForegroundColor Cyan }
 # that arguments such as -c or --name are passed through to the program untouched.
 function Run {
     $exe, $rest = $args
+    $rest = @($rest) # a single remaining argument would otherwise be splatted character by character
     & $exe @rest
     if ($LASTEXITCODE -ne 0) { throw "Command failed ($LASTEXITCODE): $($args -join ' ')" }
 }
@@ -44,6 +45,7 @@ function Run {
 # redirected stderr into a terminating error under "Stop", so relax that just for this call.
 function Try-Run {
     $exe, $rest = $args
+    $rest = @($rest)
     $saved = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try { & $exe @rest *> $null } catch { }

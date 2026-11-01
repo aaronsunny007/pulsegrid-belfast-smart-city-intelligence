@@ -1,0 +1,94 @@
+# Three jobs, all on serverless compute (no clusters to manage or leave running).
+resources:
+  jobs:
+    # Run once after the first deploy: creates the catalog, schemas, volumes and reference data.
+    pulsecity_setup:
+      name: pulsecity-setup
+      tasks:
+        - task_key: setup_catalog
+          environment_key: default
+          python_wheel_task:
+            package_name: pulsecity
+            entry_point: setup_catalog
+            parameters: ["--catalog", "${var.catalog}", "--storage-root", "${var.storage_root}"]
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - ../dist/*.whl
+
+    # Polls TfL every 5 minutes and lands the raw response in the landing volume.
+    pulsecity_collector:
+      name: pulsecity-collector-${var.city}
+      # Standard mode: slower start-up, lower serverless cost. Fine for a scheduled poll.
+      performance_target: STANDARD
+      max_concurrent_runs: 1
+      timeout_seconds: 240
+      schedule:
+        quartz_cron_expression: "0 0/5 * * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure: ["${var.notification_email}"]
+      notification_settings:
+        no_alert_for_skipped_runs: true
+      tasks:
+        - task_key: collect_status
+          environment_key: default
+          python_wheel_task:
+            package_name: pulsecity
+            entry_point: collect_status
+            parameters: ["--catalog", "${var.catalog}", "--city", "${var.city}"]
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - ../dist/*.whl
+
+    # Hourly: Auto Loader -> Bronze, MERGE -> Silver, incremental rebuild of Gold.
+    pulsecity_pipeline:
+      name: pulsecity-pipeline-${var.city}
+      performance_target: STANDARD
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 7 * * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure: ["${var.notification_email}"]
+      parameters:
+        - name: lookback_days
+          default: "3"
+      tasks:
+        - task_key: ingest_bronze
+          environment_key: default
+          python_wheel_task:
+            package_name: pulsecity
+            entry_point: ingest_bronze
+            parameters: ["--catalog", "${var.catalog}", "--city", "${var.city}",
+                         "--run-id", "{{job.run_id}}"]
+        - task_key: build_silver
+          depends_on: [{task_key: ingest_bronze}]
+          environment_key: default
+          python_wheel_task:
+            package_name: pulsecity
+            entry_point: build_silver
+            parameters: ["--catalog", "${var.catalog}", "--city", "${var.city}",
+                         "--run-id", "{{job.run_id}}"]
+        - task_key: build_gold
+          depends_on: [{task_key: build_silver}]
+          environment_key: default
+          python_wheel_task:
+            package_name: pulsecity
+            entry_point: build_gold
+            parameters: ["--catalog", "${var.catalog}", "--city", "${var.city}",
+                         "--run-id", "{{job.run_id}}",
+                         "--lookback-days", "{{job.parameters.lookback_days}}"]
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - ../dist/*.whl

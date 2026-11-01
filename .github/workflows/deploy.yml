@@ -1,0 +1,31 @@
+# Manual deploy to Databricks. Needs repository secrets DATABRICKS_HOST and DATABRICKS_TOKEN
+# (or a service principal via DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET), plus the
+# repository variables NOTIFICATION_EMAIL and STORAGE_ROOT (the storageRoot output of infra/main.bicep).
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Bundle target
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      BUNDLE_VAR_notification_email: ${{ vars.NOTIFICATION_EMAIL }}
+      BUNDLE_VAR_storage_root: ${{ vars.STORAGE_ROOT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: databricks/setup-cli@main
+      - run: databricks bundle validate -t ${{ inputs.target }}
+      - run: databricks bundle deploy -t ${{ inputs.target }}

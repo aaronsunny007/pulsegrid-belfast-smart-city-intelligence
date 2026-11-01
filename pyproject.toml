@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulsecity"
+version = "0.1.0"
+description = "PulseCity SmartGrid: a transport reliability lakehouse on Azure Databricks"
+readme = "README.md"
+requires-python = ">=3.10"
+# PySpark and Delta are provided by the Databricks runtime, so they are dev-only here.
+dependencies = [
+    "requests>=2.31",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pyspark==4.0.1",
+    "delta-spark==4.0.0",
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+# Entry points used by the Databricks job tasks (python_wheel_task) and for local runs.
+[project.scripts]
+setup_catalog = "pulsecity.jobs:setup_catalog"
+collect_status = "pulsecity.jobs:collect_status"
+ingest_bronze = "pulsecity.jobs:ingest_bronze"
+build_silver = "pulsecity.jobs:build_silver"
+build_gold = "pulsecity.jobs:build_gold"
+pulsecity_demo = "pulsecity.demo:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pulsecity = ["cities/*.yml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]

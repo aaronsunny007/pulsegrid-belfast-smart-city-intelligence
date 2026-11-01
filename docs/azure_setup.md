@@ -1,9 +1,49 @@
 # Deploying to Azure
 
-About an hour, start to finish. You need an Azure subscription where you can create resources.
+You need an Azure subscription where you can create resources.
 
 > **Start the collector as early as you can.** Reliability scores need history: aim for at least
 > two weeks of polls before you take dashboard screenshots.
+
+## Fast path: one script (about 15 minutes)
+
+`infra/main.bicep` creates every Azure resource, and `scripts/bootstrap.ps1` runs the whole setup
+on Windows: Azure resources, Unity Catalog storage, the TfL secret, bundle deploy, setup job and
+one test run of the collector. It is safe to re-run.
+
+1. Install the tools (PowerShell):
+
+```powershell
+winget install -e --id Microsoft.AzureCLI
+```
+
+```powershell
+winget install -e --id Databricks.DatabricksCLI
+```
+
+```powershell
+winget install -e --id Python.Python.3.12
+```
+
+   Open a new terminal afterwards so they are on `PATH`.
+
+2. Get a free TfL API key at <https://api-portal.tfl.gov.uk> (optional but recommended).
+
+3. From the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 -Email you@example.com -TflAppKey <key>
+```
+
+   Two browser sign-ins appear: Azure, then Databricks. Everything else is automatic. Use
+   `-Target dev` to try it in the `pulsecity_dev` catalog with schedules paused.
+
+**If it stops at the storage credential** with an error about no metastore: Unity Catalog is not
+yet enabled for your Databricks account in that region. Open <https://accounts.azuredatabricks.net>,
+go to **Catalog**, create a metastore for the region (no storage needed) and assign it to
+`dbw-pulsecity`, then re-run the script.
+
+The manual steps below do the same thing by hand, and explain what the script does.
 
 ## 1. Azure resources
 
@@ -112,4 +152,10 @@ together, then redeploy.
 databricks bundle destroy -t prod
 ```
 
-Then delete the resource group in the Azure portal.
+Then delete the resource groups:
+
+```bash
+az group delete --name rg-pulsecity
+```
+
+The workspace's managed resource group (`rg-pulsecity-databricks-managed`) is removed with it.

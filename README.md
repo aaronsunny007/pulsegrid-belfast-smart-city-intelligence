@@ -50,7 +50,7 @@ More detail: [docs/architecture.md](docs/architecture.md)
 | Processing | PySpark, Spark SQL, Apache Spark 4 |
 | Storage | Azure Data Lake Storage Gen2, Delta Lake |
 | Governance | Unity Catalog (catalog, schemas, volumes, external location) |
-| Orchestration and deployment | Databricks Workflows, Databricks Asset Bundles |
+| Orchestration and deployment | Databricks Workflows, Databricks Asset Bundles, Bicep |
 | BI | Power BI (composite model over a Databricks SQL warehouse) |
 | Quality | pytest (42 tests on local Spark + Delta), ruff, GitHub Actions |
 | Language | Python 3.10+ |
@@ -76,8 +76,8 @@ More detail: [docs/architecture.md](docs/architecture.md)
   reliability.
 - **Gaps are visible.** Collector outages lower `coverage_pct` instead of silently counting
   as good or bad service.
-- **Infrastructure as code.** One `databricks bundle deploy` creates the wheel and all three
-  jobs. CI runs lint, tests and a wheel build on every push.
+- **Infrastructure as code.** Bicep creates the Azure resources, and one
+  `databricks bundle deploy` creates the wheel and all three jobs. CI runs lint, tests and a wheel build on every push.
 
 ## The reliability score
 
@@ -104,7 +104,8 @@ Column definitions: [docs/data_dictionary.md](docs/data_dictionary.md)
 
 ## Run it locally (no Azure needed)
 
-Needs Python 3.10+ and Java 17+.
+Needs Python 3.10+ and Java 17+. On Windows, run the tests and demo inside WSL (local Spark
+needs Hadoop native libraries on Windows); deploying to Azure works from plain Windows.
 
 ```bash
 make install
@@ -138,15 +139,15 @@ real TfL data from the collector.
 
 ## Deploy to Azure
 
-Step-by-step guide: [docs/azure_setup.md](docs/azure_setup.md). In short:
+Azure resources are defined as code in [infra/main.bicep](infra/main.bicep) (ADLS Gen2,
+Databricks Premium, Access Connector with least-privilege storage access, budget alert).
+One script provisions them, wires up Unity Catalog and deploys the bundle:
 
-```bash
-databricks bundle deploy -t prod
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 -Email you@example.com -TflAppKey <key>
 ```
 
-```bash
-databricks bundle run -t prod pulsecity_setup
-```
+Step-by-step guide and manual equivalent: [docs/azure_setup.md](docs/azure_setup.md).
 
 Power BI model, DAX measures and page layout: [docs/powerbi.md](docs/powerbi.md).
 Example Spark SQL analysis: [notebooks/reliability_analysis.sql](notebooks/reliability_analysis.sql).
@@ -156,6 +157,8 @@ Example Spark SQL analysis: [notebooks/reliability_analysis.sql](notebooks/relia
 ```
 ├── databricks.yml              Asset Bundle (targets dev / prod)
 ├── resources/jobs.yml          collector, pipeline and setup jobs
+├── infra/main.bicep            Azure resources as code
+├── scripts/bootstrap.ps1       one-command setup on Windows
 ├── src/pulsecity/
 │   ├── cities/london.yml       city config
 │   ├── sources/tfl.py          TfL API client

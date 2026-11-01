@@ -11,3 +11,4 @@ spark-warehouse/
 metastore_db/
 derby.log
 .demo/
+graphify-out/

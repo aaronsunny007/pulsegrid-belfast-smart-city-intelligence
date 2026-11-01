@@ -28,6 +28,25 @@ production design: ADLS Gen2, Access Connector, external location, collector ins
 6. Check Catalog > workspace > landing > raw for files, then run
    `databricks bundle run -t free pulsecity_pipeline` and query `workspace.gold.*`.
 
+## Problems we hit (and the fixes)
+
+- **`databricks auth login` hangs** in a terminal tool with no browser: use a token instead,
+  `databricks configure --host <url> --profile pulsecity`.
+- **Pasted tokens can carry an invisible leading character**, which fails with
+  `invalid header field value for "Authorization"`. A real token starts with `dapi`. Copy it with
+  the copy button, not by selecting text, and strip anything outside `[A-Za-z0-9_.-]`.
+- **Piping a secret into `gh secret set` from Windows PowerShell 5.1 adds a BOM** to the value
+  (`parse "\ufeffhttps://..."` in the workflow log). Use `--body "<value>"` instead of a pipe.
+- **Collector crashed with `No module named 'urllib3'`**: the workflow installs the wheel with
+  `--no-deps`, so `requests` must be installed separately with its own dependencies.
+- **`CACHE_REQUIRES_NEWER_CLIENT_ON_SERVERLESS_GC` in `build_silver`**: serverless client `"2"`
+  rejects `DataFrame.cache()`. `resources/jobs.yml` uses client `"5"`.
+- **`gh workflow run` returns 404 for a new workflow** until the workflow file exists on `main`.
+- **Tests on Windows**: PySpark needs Hadoop's `winutils.exe` there. Rely on the `ci` workflow
+  (Linux, runs on every push) or use WSL; native Windows is not supported.
+- **Windows long paths**: install the dev dependencies into a short venv path such as `C:\pcvenv`,
+  or pyspark installs incompletely.
+
 ## Limits to know
 
 - Free Edition has a fair-use compute quota. If the hourly pipeline exhausts it, compute stops

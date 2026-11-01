@@ -27,7 +27,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install --no-deps . requests pyyaml
+      # --no-deps keeps pyspark out; the collector only needs requests and pyyaml.
+      - run: pip install --no-deps . && pip install requests pyyaml
       - uses: databricks/setup-cli@main
       - id: collect
         run: collect_status --catalog "$CATALOG" --landing-root landing

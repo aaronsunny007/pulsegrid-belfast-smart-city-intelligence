@@ -1,0 +1,36 @@
+# Polls TfL every 5 minutes from GitHub Actions and uploads the raw file to the Unity Catalog
+# landing volume. Used with the `free` bundle target, where Databricks has no outbound internet.
+# Needs repository secrets DATABRICKS_HOST and DATABRICKS_TOKEN (and optionally TFL_APP_KEY).
+# Scheduled workflows only run from the default branch, so merge to main first.
+name: collector
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      TFL_APP_KEY: ${{ secrets.TFL_APP_KEY }}
+      CATALOG: workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --no-deps . requests pyyaml
+      - uses: databricks/setup-cli@main
+      - id: collect
+        run: collect_status --catalog "$CATALOG" --landing-root landing
+      # Upload even when TfL failed: the http_status=0 envelope makes the gap visible in Bronze.
+      - if: always()
+        run: databricks fs cp --recursive --overwrite landing "dbfs:/Volumes/$CATALOG/landing/raw"

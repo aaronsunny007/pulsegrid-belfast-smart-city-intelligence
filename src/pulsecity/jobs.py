@@ -68,13 +68,20 @@ def collect_status(argv: list[str] | None = None) -> None:
     def extra(p):
         p.add_argument("--secret-scope", default="pulsecity")
         p.add_argument("--secret-key", default="tfl_app_key")
+        # Free Edition blocks outbound internet, so the collector runs on GitHub Actions and
+        # lands into a local folder that the workflow then uploads to the volume.
+        p.add_argument("--landing-root", default="")
 
     args = _args(argv, extra)
     cfg = load_city(args.city)
     tables = Tables.for_databricks(args.catalog)
     client = TflClient(_tfl_app_key(args.secret_scope, args.secret_key))
     landed = collect_line_status(
-        client, city=cfg.city, source=cfg.source, modes=cfg.modes, landing_root=tables.landing_root
+        client,
+        city=cfg.city,
+        source=cfg.source,
+        modes=cfg.modes,
+        landing_root=args.landing_root or tables.landing_root,
     )
     print(f"landed {landed.path} (HTTP {landed.http_status})")
     if landed.http_status != 200:

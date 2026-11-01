@@ -1,0 +1,30 @@
+# City configuration. Adding a city means adding a file like this one,
+# plus a source adapter if the city uses a new data provider.
+city: london
+display_name: London
+timezone: Europe/London
+source: tfl
+
+# TfL modes to poll. One API call returns the status of every line in these modes.
+modes:
+  - tube
+  - elizabeth-line
+  - dlr
+  - overground
+
+# How often the collector job runs. Must match the job schedule in resources/jobs.yml.
+poll_interval_minutes: 5
+
+# A gap between two polls longer than this is treated as missing data, not as service.
+max_gap_minutes: 15
+
+# Trains run past midnight, so a "service day" starts at 04:00 local time.
+service_day_start_hour: 4
+
+# Minimum observed minutes in a day before a line gets a risk label.
+min_observed_minutes: 120
+
+# Risk bands on the 0-100 reliability score. Recalibrate once a few weeks of history exist.
+risk_bands:
+  stable_min: 98.0
+  moderate_min: 95.0

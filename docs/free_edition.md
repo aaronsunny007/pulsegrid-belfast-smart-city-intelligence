@@ -47,6 +47,33 @@ production design: ADLS Gen2, Access Connector, external location, collector ins
 - **Windows long paths**: install the dev dependencies into a short venv path such as `C:\pcvenv`,
   or pyspark installs incompletely.
 
+## Keeping the collector running
+
+A `*/5` cron on a new repository fired only 3 times in 15 hours, so the workflow does not rely on it:
+
+- **One run = 30 minutes.** It polls 6 times, 5 minutes apart, then starts the next run itself
+  (`gh workflow run` with the built-in token). Runs queue behind each other, so polls never
+  overlap or come closer than 5 minutes.
+- **Cron is the restart.** `17,47 * * * *` (off-peak minutes) revives the chain if a run is
+  cancelled, times out or a dispatch fails.
+- **To stop it:** disable the `collector` workflow in the Actions tab (cancelling one run alone
+  stops that run's hand-off, but the cron will restart it).
+- The repository is public, so the runner minutes are free. On a private repo this would use
+  about 720 hours a month, far over the free allowance.
+
+Optional, a stronger trigger from outside GitHub: create a fine-grained token limited to this
+repository with **Actions: read and write**, then have a free cron service (for example
+cron-job.org) `POST https://api.github.com/repos/<owner>/<repo>/actions/workflows/collector.yml/dispatches`
+with body `{"ref":"main"}` every 30 minutes. Extra triggers are harmless: the concurrency group
+keeps only one queued run. Databricks itself cannot do this call, because Free Edition blocks
+outbound internet.
+
+## Reporting on thin or gappy data
+
+Build the report on `gold.agg_network_health_hourly` and `gold.agg_line_reliability_daily` (hourly
+and daily grain), not on the per-poll fact. A missed poll then shows up as lower `coverage_pct`
+in the daily table instead of looking like an outage.
+
 ## Limits to know
 
 - Free Edition has a fair-use compute quota. If the hourly pipeline exhausts it, compute stops

@@ -2,26 +2,38 @@
 # landing volume. Used with the `free` bundle target, where Databricks has no outbound internet.
 # Needs repository secrets DATABRICKS_HOST and DATABRICKS_TOKEN (and optionally TFL_APP_KEY).
 # Scheduled workflows only run from the default branch, so merge to main first.
+#
+# GitHub's scheduler is best effort and drops most */5 ticks, so one run covers 30 minutes
+# itself: it polls 6 times, 5 minutes apart, and then starts the next run. The cron is only a
+# restart for when that chain breaks. To stop collecting, disable the workflow in the Actions tab.
 name: collector
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    # Off-peak minutes: GitHub drops far more runs at :00 and :30.
+    - cron: "17,47 * * * *"
   workflow_dispatch:
 
+# Runs queue behind each other (never overlap), so polls stay at least 5 minutes apart.
 concurrency:
   group: collector
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  actions: write # lets the last step start the next run with the built-in token
+
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 35
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
       TFL_APP_KEY: ${{ secrets.TFL_APP_KEY }}
       CATALOG: workspace
+      POLLS: 6
+      INTERVAL_SECONDS: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,8 +42,22 @@ jobs:
       # --no-deps keeps pyspark out; the collector only needs requests and pyyaml.
       - run: pip install --no-deps . && pip install requests pyyaml
       - uses: databricks/setup-cli@main
-      - id: collect
-        run: collect_status --catalog "$CATALOG" --landing-root landing
-      # Upload even when TfL failed: the http_status=0 envelope makes the gap visible in Bronze.
-      - if: always()
-        run: databricks fs cp --recursive --overwrite landing "dbfs:/Volumes/$CATALOG/landing/raw"
+      - name: Poll TfL and upload
+        run: |
+          failed=0
+          for i in $(seq "$POLLS"); do
+            started=$SECONDS
+            collect_status --catalog "$CATALOG" --landing-root landing || failed=1
+            # Upload even when TfL failed: the http_status=0 envelope makes the gap visible in Bronze.
+            databricks fs cp --recursive --overwrite landing "dbfs:/Volumes/$CATALOG/landing/raw" || failed=1
+            # Sleep after the last poll too, so the next run starts at least one interval later.
+            remaining=$((INTERVAL_SECONDS - (SECONDS - started)))
+            if [ "$remaining" -gt 0 ]; then sleep "$remaining"; fi
+          done
+          exit "$failed"
+      # Keep the chain going even if a poll failed, but not when someone cancels the run to stop it.
+      # If this step is skipped, the cron restarts the chain.
+      - if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run collector.yml --ref main

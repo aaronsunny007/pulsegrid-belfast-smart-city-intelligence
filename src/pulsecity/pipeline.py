@@ -101,8 +101,10 @@ def bronze_batch(spark: SparkSession, tables: Tables, cfg: CityConfig) -> int:
 
 def silver_process_batch(spark: SparkSession, tables: Tables, bronze_batch: DataFrame) -> dict:
     result = silver.transform_line_status(bronze_batch)
-    valid = result.valid.cache()
-    quarantine = result.quarantine.cache()
+    # No .cache(): on Databricks serverless it hit QUOTA_EXCEEDED (50 schemas per catalog)
+    # after about a day of hourly runs. The tables are small, so recomputing is cheap.
+    valid = result.valid
+    quarantine = result.quarantine
     metrics = {
         "bronze_rows": bronze_batch.count(),
         "silver_rows": valid.count(),
@@ -111,8 +113,6 @@ def silver_process_batch(spark: SparkSession, tables: Tables, bronze_batch: Data
     merge_upsert(spark, valid, tables.silver_line_status, silver.SILVER_KEYS)
     if metrics["quarantined_rows"]:
         append(quarantine, tables.silver_quarantine)
-    valid.unpersist()
-    quarantine.unpersist()
     return metrics
 
 
@@ -178,12 +178,11 @@ def build_gold(
     snapshots = gold.line_snapshots(silver_df, severity, cfg)
     if start is not None:
         snapshots = snapshots.where(F.col("service_date") >= F.lit(start))
-    snapshots = snapshots.cache()
 
     overwrite_where(spark, snapshots, tables.fact_line_status, window_pred)
 
     all_snapshots = spark.table(tables.fact_line_status).where(F.col("city") == cfg.city)
-    incidents = gold.disruption_incidents(all_snapshots).cache()
+    incidents = gold.disruption_incidents(all_snapshots)
     overwrite_where(spark, incidents, tables.fact_disruption_incident, f"city = '{cfg.city}'")
 
     window_incidents = (
@@ -215,8 +214,6 @@ def build_gold(
         "snapshot_rows": snapshots.count(),
         "incidents": incidents.count(),
     }
-    snapshots.unpersist()
-    incidents.unpersist()
     return metrics
 
 

@@ -41,6 +41,9 @@ production design: ADLS Gen2, Access Connector, external location, collector ins
   `--no-deps`, so `requests` must be installed separately with its own dependencies.
 - **`CACHE_REQUIRES_NEWER_CLIENT_ON_SERVERLESS_GC` in `build_silver`**: serverless client `"2"`
   rejects `DataFrame.cache()`. `resources/jobs.yml` uses client `"5"`.
+- **`QUOTA_EXCEEDED: Cannot create 1 Schema(s) ... limit: 50`** in `build_silver`, about a day after
+  the client bump: on client `"5"` each `.cache()` call made a hidden schema that counts against
+  the catalog quota. The pipeline no longer caches DataFrames.
 - **`gh workflow run` returns 404 for a new workflow** until the workflow file exists on `main`.
 - **Tests on Windows**: PySpark needs Hadoop's `winutils.exe` there. Rely on the `ci` workflow
   (Linux, runs on every push) or use WSL; native Windows is not supported.

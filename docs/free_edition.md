@@ -7,7 +7,7 @@ TfL API is not reachable from inside Databricks. The split is:
 |---|---|
 | Collector (TfL poll every 5 min) | GitHub Actions, `.github/workflows/collector.yml` |
 | Raw files | Unity Catalog volume `workspace.landing.raw`, uploaded by the workflow |
-| Bronze / Silver / Gold | Databricks pipeline job, hourly |
+| Bronze / Silver / Gold | Databricks pipeline job, every 4 hours |
 
 The Azure path (`infra/main.bicep`, `scripts/bootstrap.ps1`) is unchanged and is the
 production design: ADLS Gen2, Access Connector, external location, collector inside Databricks.
@@ -79,8 +79,9 @@ in the daily table instead of looking like an outage.
 
 ## Limits to know
 
-- Free Edition has a fair-use compute quota. If the hourly pipeline exhausts it, compute stops
-  for the rest of the day. Lower the pipeline cadence in `resources/jobs.yml` if that happens.
+- Free Edition has a fair-use compute quota. Hourly pipeline runs exhausted it after about two days
+  (new runs were refused with "Triggering new runs ... is currently disabled temporarily"), so the
+  `free` target runs the pipeline every 4 hours (`databricks.yml`). Azure stays hourly.
 - GitHub cron is best effort: runs can start a few minutes late or be skipped under load, which
   shows up as gaps in the data. The reliability score already treats missing polls as gaps.
 - Free Edition cannot be used commercially.

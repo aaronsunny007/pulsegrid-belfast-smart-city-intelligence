@@ -49,6 +49,10 @@ targets:
         pulsecity_collector:
           schedule:
             pause_status: PAUSED
+        # Every 4 hours: hourly runs used up the Free Edition compute quota.
+        pulsecity_pipeline:
+          schedule:
+            quartz_cron_expression: "0 7 0/4 * * ?"
 
   prod:
     mode: production

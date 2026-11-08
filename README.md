@@ -97,6 +97,7 @@ and limitations: [docs/reliability_methodology.md](docs/reliability_methodology.
 | `fact_disruption_incident` | incident |
 | `agg_line_reliability_daily` | line × service day |
 | `agg_network_health_hourly` | hour |
+| `agg_disruption_risk_hourly` | line × weekday/weekend × hour of day |
 | `line_status_current`, `v_live_alerts` | line (latest) |
 | `dim_line` (SCD2), `dim_date`, `dim_status_severity` | dimensions |
 

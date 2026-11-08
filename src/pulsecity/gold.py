@@ -283,6 +283,63 @@ def network_health_hourly(snapshots: DataFrame) -> DataFrame:
     )
 
 
+# Weight of the line's own average, in minutes, when smoothing thin hourly samples.
+RISK_PRIOR_MINUTES = 120.0
+
+
+def disruption_risk_hourly(snapshots: DataFrame) -> DataFrame:
+    """How often each line has been disrupted at each local hour, weekday vs weekend.
+
+    This is a historical frequency, not a forecast model. ``smoothed_risk_pct`` pulls a thin
+    hourly sample towards the line's overall disruption rate so a few bad polls cannot
+    claim a 100% risk; ``confidence`` says how many distinct days back the number.
+    """
+    operating = snapshots.where(~F.col("is_service_closed"))
+    dur = F.col("duration_min")
+    is_weekend = F.dayofweek("service_date").isin(1, 7)
+
+    hourly = (
+        operating.withColumn("day_type", F.when(is_weekend, "weekend").otherwise("weekday"))
+        .withColumn("hour_of_day", F.hour("local_hour"))
+        .groupBy("city", "line_id", "day_type", "hour_of_day")
+        .agg(
+            F.max_by("line_name", "polled_at").alias("line_name"),
+            F.max_by("mode", "polled_at").alias("mode"),
+            F.sum(dur).alias("observed_min"),
+            F.sum(F.when(F.col("is_disrupted"), dur).otherwise(0.0)).alias("disrupted_min"),
+            F.countDistinct("service_date").alias("days_observed"),
+            F.countDistinct(F.when(F.col("is_disrupted"), F.col("service_date"))).alias(
+                "days_disrupted"
+            ),
+        )
+    )
+
+    line = Window.partitionBy("city", "line_id")
+    baseline = F.sum("disrupted_min").over(line) / F.sum("observed_min").over(line)
+    smoothed = (F.col("disrupted_min") + RISK_PRIOR_MINUTES * baseline) / (
+        F.col("observed_min") + RISK_PRIOR_MINUTES
+    )
+
+    return hourly.select(
+        "city",
+        "line_id",
+        "line_name",
+        "mode",
+        "day_type",
+        "hour_of_day",
+        F.round("observed_min", 1).alias("observed_min"),
+        F.round("disrupted_min", 1).alias("disrupted_min"),
+        "days_observed",
+        "days_disrupted",
+        F.round(100.0 * F.col("disrupted_min") / F.col("observed_min"), 2).alias("risk_pct"),
+        F.round(100.0 * smoothed, 2).alias("smoothed_risk_pct"),
+        F.when(F.col("days_observed") < 7, "Low")
+        .when(F.col("days_observed") < 21, "Medium")
+        .otherwise("Good")
+        .alias("confidence"),
+    )
+
+
 def line_status_current(snapshots: DataFrame) -> DataFrame:
     latest = Window.partitionBy("city", "line_id").orderBy(F.col("polled_at").desc())
     return (

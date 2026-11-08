@@ -91,6 +91,14 @@ Key: `snapshot_id, line_id, status_seq`
 lines_observed, lines_disrupted, line_minutes_observed, network_health_index (time-weighted
 score across all lines), planned_works_pct.
 
+### `gold.agg_disruption_risk_hourly` (one row per line × weekday/weekend × local hour)
+
+How often a line has been disrupted at that hour: a historical frequency, not a forecast model.
+`observed_min`, `disrupted_min`, `days_observed`, `days_disrupted`, `risk_pct` (raw share of
+observed minutes disrupted), `smoothed_risk_pct` (pulled towards the line's own average with a
+120-minute prior, so thin samples don't claim extreme values) and `confidence` (Low under 7
+days, Medium under 21, Good after). Show `smoothed_risk_pct` and always show `confidence`.
+
 ### `gold.line_status_current`
 Latest poll per line. Powers the live view.
 

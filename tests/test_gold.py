@@ -136,6 +136,39 @@ def test_too_little_data_gets_no_risk_label(spark, london):
     assert row.risk_level == "Insufficient data"
 
 
+def test_disruption_risk_is_smoothed_and_labelled_by_confidence(spark, london):
+    def hour(day, start_hour, disrupted):
+        return [
+            (
+                f"2026-10-{day} {start_hour:02d}:{m:02d}",
+                "central",
+                6 if disrupted and m < 10 else 10,
+                "RealTime" if disrupted and m < 10 else None,
+            )
+            for m in range(0, 60, 5)
+        ]
+
+    # Fridays in BST: 09:xx UTC is local hour 10, 10:xx UTC is local hour 11.
+    rows = hour(16, 9, True) + hour(16, 10, False) + hour(23, 9, False)
+    risk = {
+        r.hour_of_day: r for r in gold.disruption_risk_hourly(snaps(spark, london, rows)).collect()
+    }
+
+    ten = risk[10]
+    assert ten.day_type == "weekday" and ten.days_observed == 2 and ten.days_disrupted == 1
+    assert ten.risk_pct == pytest.approx(8.33)  # 10 of 120 minutes
+    # line average is 10/180; (10 + 120 * 10/180) / (120 + 120)
+    assert ten.smoothed_risk_pct == pytest.approx(6.94)
+    assert ten.confidence == "Low"
+    assert risk[11].risk_pct == 0.0
+
+
+def test_disruption_risk_separates_weekends(spark, london):
+    rows = [("2026-10-17 09:00", "central", 6, "RealTime")]  # Saturday
+    (row,) = gold.disruption_risk_hourly(snaps(spark, london, rows)).collect()
+    assert row.day_type == "weekend" and row.risk_pct == 100.0
+
+
 def test_network_health_is_time_weighted(spark, london):
     rows = [
         ("2026-10-16 10:00", "central", 6, "RealTime"),

@@ -145,6 +145,10 @@ class Tables:
         return self.name("gold", "agg_network_health_hourly")
 
     @property
+    def agg_disruption_risk_hourly(self) -> str:
+        return self.name("gold", "agg_disruption_risk_hourly")
+
+    @property
     def line_status_current(self) -> str:
         return self.name("gold", "line_status_current")
 

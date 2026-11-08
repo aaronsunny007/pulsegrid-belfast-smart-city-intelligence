@@ -193,6 +193,13 @@ def build_gold(
     overwrite_where(
         spark, gold.network_health_hourly(snapshots), tables.agg_network_health_hourly, window_pred
     )
+    # Risk is a long-run frequency, so it is rebuilt from all history (a small table).
+    overwrite_where(
+        spark,
+        gold.disruption_risk_hourly(all_snapshots),
+        tables.agg_disruption_risk_hourly,
+        f"city = '{cfg.city}'",
+    )
     overwrite_where(
         spark,
         gold.line_status_current(all_snapshots),

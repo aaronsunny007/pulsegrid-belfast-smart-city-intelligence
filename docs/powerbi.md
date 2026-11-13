@@ -13,6 +13,7 @@ Gold and in the explicit DAX measures below. No visual uses Power BI's default "
 | `gold.agg_line_reliability_daily` | Import | main fact, refreshed hourly |
 | `gold.agg_network_health_hourly` | Import | trend visuals |
 | `gold.fact_disruption_incident` | Import | incident list and MTTR |
+| `gold.agg_disruption_risk_hourly` | Import | hour-of-day risk heatmap |
 | `gold.v_live_alerts` | DirectQuery | always current, no refresh needed |
 
 This makes a composite model: fast imported history plus a live alert feed.
@@ -85,6 +86,19 @@ DIVIDE (
 Live Alerts = COUNTROWS ( v_live_alerts )
 
 Data Coverage % = AVERAGE ( agg_line_reliability_daily[coverage_pct] )
+
+Disrupted % (raw) =
+DIVIDE (
+    SUM ( agg_disruption_risk_hourly[disrupted_min] ),
+    SUM ( agg_disruption_risk_hourly[observed_min] )
+) * 100
+
+-- Exact at line x day type x hour. Above that grain it is an unweighted average.
+Smoothed Risk % = AVERAGE ( agg_disruption_risk_hourly[smoothed_risk_pct] )
+
+Risk Confidence =
+VAR d = MIN ( agg_disruption_risk_hourly[days_observed] )
+RETURN SWITCH ( TRUE (), d < 7, "Low", d < 21, "Medium", "Good" )
 ```
 
 `Reliability Score` is time-weighted: it divides total impact by total observed time, instead of
@@ -103,14 +117,37 @@ for a month).
 **2. Line drill-through** (drill through on `dim_line[line_name]`)
 - Daily Reliability Score trend with the 98 and 95 bands as constant lines
 - Incident table: start, duration, peak severity, first reason
-- Matrix: Incidents by hour of day × weekday (where do failures cluster?)
+- Matrix: `Smoothed Risk %` by hour of day × `day_type` for the selected line, with
+  `Risk Confidence` next to it. Always show the confidence: with a few weeks of data most cells
+  are Low or Medium. This is a historical frequency, not a forecast.
 
 **3. Data quality**
 - Data Coverage % by day
-- Quarantined records by rule (`silver.quarantine`, Import)
 - Pipeline runs (`ops.run_log`)
+- Quarantined records by rule (`silver.quarantine`, Import). The table is only created when a
+  row first fails a rule, so skip this visual until it exists.
 
 ## Refresh
 
 Publish to the Power BI service and schedule refresh hourly, 20 minutes past the hour (the
 pipeline job runs at :07 and takes a few minutes). The DirectQuery alert table needs no refresh.
+
+## Building it on Databricks Free Edition (Power BI Desktop only)
+
+The Free Edition pipeline runs every 4 hours, so there is nothing to refresh hourly. Build and
+refresh the report by hand in Power BI Desktop and keep screenshots for the README.
+
+1. Install Power BI Desktop (free, Microsoft Store).
+2. **Get data → Databricks.** Server hostname and HTTP path come from the SQL warehouse's
+   **Connection details** tab (hostname `<workspace>.cloud.databricks.com`, path
+   `/sql/1.0/warehouses/<id>`). Sign in with a **personal access token** (Databricks profile
+   icon → Settings → Developer → Access tokens). Keep the token out of the repo and the file.
+3. Catalog `workspace`, schema `gold`. Load the tables above (Import) and `v_live_alerts`
+   (DirectQuery). Tick `ops.run_log` for the data quality page.
+4. In Power Query, filter `dim_line` to `is_current = TRUE`.
+5. Add the relationships and `_Measures` from this page, then build the three pages.
+6. Press **Refresh** after the 4-hourly pipeline run. The first query after the warehouse has
+   been idle waits for it to start.
+7. Use real data only for screenshots. Show Data Coverage % on page 3: a few days have gaps.
+8. Free Power BI accounts need a work or school email to publish, so a personal Gmail cannot
+   publish to the Power BI service. Share screenshots and the `.pbix` instead.
